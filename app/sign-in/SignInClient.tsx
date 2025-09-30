@@ -28,7 +28,10 @@ export default function SignInClient() {
       });
       const data: { ok?: boolean; error?: string } = await r.json();
       if (!r.ok || !data.ok) throw new Error(data.error || 'Sign-in failed');
-      router.replace(next);
+
+      // Always go to landing page after success
+      router.replace('/');
+
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setError(msg);
