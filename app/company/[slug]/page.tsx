@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 
 export default function CompanyPage() {
   const { slug } = useParams<{ slug: string }>();
-  const [text, setText] = React.useState<string>('Generating analysis. This could take a hot minute.');
+  const [text, setText] = React.useState<string>('Generating analysis. This will take approximately 4-5 minutes.');
 
   React.useEffect(() => {
     (async () => {

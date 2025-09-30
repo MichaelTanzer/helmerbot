@@ -10,7 +10,7 @@ export default function AboutPage() {
         <h1 className="h1" style={{ marginBottom: 8 }}>About</h1>
 
         <p>
-          I am an investor with &gt;15 years of professional experience just trying to figure stuff out.
+          I am an investor with &gt;15 years of professional experience just trying to figure stuff out. I am deeply interested in how AI will shape the investment research process going forward.
           To that end, I occasionally send out lists of stuff I find interesting and very occasionally write
           something long form, under a nom de plume,&nbsp;
           <a className="btn-link" 
