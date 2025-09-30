@@ -29,8 +29,8 @@ export default function SignInClient() {
       const data: { ok?: boolean; error?: string } = await r.json();
       if (!r.ok || !data.ok) throw new Error(data.error || 'Sign-in failed');
 
-      // Always go to landing page after success
-      router.replace('/');
+      /** Force a full navigation so the new cookie is definitely present on the request */
+      window.location.assign('/');
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
