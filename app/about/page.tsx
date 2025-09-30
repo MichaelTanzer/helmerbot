@@ -12,11 +12,13 @@ export default function AboutPage() {
         <p>
           I am an investor with &gt;15 years of professional experience just trying to figure stuff out.
           To that end, I occasionally send out lists of stuff I find interesting and very occasionally write
-          something long form, under a nom de plume, here (
-          <a className="btn-link" href="https://strotw.substack.com/" target="_blank" rel="noreferrer">
-            https://strotw.substack.com/
+          something long form, under a nom de plume,&nbsp;
+          <a className="btn-link" 
+            href="https://strotw.substack.com/"
+            target="_blank" rel="noreferrer">
+           here
           </a>
-          ).
+          .
         </p>
 
         <p>
