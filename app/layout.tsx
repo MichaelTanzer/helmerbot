@@ -30,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
           <nav className="controls-inline">
             <Link className="btn btn-ghost" href="/">Screen</Link>
+            <Link className="btn btn-ghost" href="/about">About</Link>
           </nav>
         </header>
         <main className="shell">{children}</main>
