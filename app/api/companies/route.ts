@@ -1,7 +1,7 @@
 export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { exportCSV } from '@/lib/dataset';
+import { queryCompanies } from '@/lib/dataset';
 import type { Power } from '@/lib/dataset';
 
 export async function GET(req: NextRequest) {
@@ -10,26 +10,31 @@ export async function GET(req: NextRequest) {
   const scope = (url.searchParams.get('scope') as 'all' | 'industry') || 'all';
   const industry = url.searchParams.get('industry') || undefined;
 
-  // Parse filters
-  const powersParam = (url.searchParams.get('powers') || '')
-    .split(',')
-    .filter(Boolean);
+  const powersParam = (url.searchParams.get('powers') || '').split(',').filter(Boolean);
+  const models = (url.searchParams.get('models') || '').split(',').filter(Boolean);
 
-  const models = (url.searchParams.get('models') || '')
-    .split(',')
-    .filter(Boolean);
-
-  // Type the array as our Power union type (from lib/dataset.ts)
   const powers = powersParam as Power[];
 
-  // Export
-  const { filename, csv } = await exportCSV({ scope, industry, powers, models });
+  const page = Number(url.searchParams.get('page') || 1);
+  const pageSize = Number(url.searchParams.get('pageSize') || 50);
 
-  return new NextResponse(csv, {
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${filename}"`,
-      'Cache-Control': 'no-store',
-    },
+  const data = await queryCompanies({
+    scope,
+    industry,
+    powers,
+    models,
+    page,
+    pageSize,
   });
+
+  const companies = data.companies.map((c) => ({
+    slug: c.slug,
+    name: c.name,
+    industry: c.industry,
+    businessModels: c.businessModels,
+    powers: c.powers,
+    ticker: c.ticker,
+  }));
+
+  return NextResponse.json({ ...data, companies });
 }

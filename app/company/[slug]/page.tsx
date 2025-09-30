@@ -14,9 +14,9 @@ export default function CompanyPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ companySlug: slug }),
         });
-        const data = await r.json();
+        const data: { error?: string; output?: string } = await r.json();
         if (!r.ok) throw new Error(data.error || 'LLM error');
-        setText(data.output);
+        setText(data.output || '');
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : 'Unknown error';
         setText(`Error: ${msg}`);

@@ -8,7 +8,7 @@ import { getLLM } from '@/lib/llm';
 type AnalysisOptions = {
   model?: string;
   maxOutputTokens?: number;
-  maxTokens?: number;        // accepted alias, we normalize
+  maxTokens?: number; // accepted alias; normalized below
   temperature?: number;
   topP?: number;
   stop?: string[];
@@ -33,12 +33,11 @@ export async function POST(req: NextRequest) {
     if (Array.isArray(companySlug)) companySlug = companySlug[0];
 
     const { companies } = await getDataset();
-    const company = companies.find(c => c.slug === companySlug);
+    const company = companies.find((c) => c.slug === companySlug);
     if (!company) {
       return NextResponse.json({ error: `Company not found: ${companySlug}` }, { status: 404 });
     }
 
-    // OpenRouter-only check
     if (!process.env.OPENROUTER_API_KEY) {
       return NextResponse.json(
         { error: 'LLM not configured. Set OPENROUTER_API_KEY (and OPENROUTER_MODEL) in .env' },

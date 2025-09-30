@@ -10,19 +10,11 @@ export async function GET(req: NextRequest) {
   const scope = (url.searchParams.get('scope') as 'all' | 'industry') || 'all';
   const industry = url.searchParams.get('industry') || undefined;
 
-  // Parse filters
-  const powersParam = (url.searchParams.get('powers') || '')
-    .split(',')
-    .filter(Boolean);
+  const powersParam = (url.searchParams.get('powers') || '').split(',').filter(Boolean);
+  const models = (url.searchParams.get('models') || '').split(',').filter(Boolean);
 
-  const models = (url.searchParams.get('models') || '')
-    .split(',')
-    .filter(Boolean);
-
-  // Type the array as our Power union type (from lib/dataset.ts)
   const powers = powersParam as Power[];
 
-  // Export
   const { filename, csv } = await exportCSV({ scope, industry, powers, models });
 
   return new NextResponse(csv, {
@@ -33,3 +25,4 @@ export async function GET(req: NextRequest) {
     },
   });
 }
+

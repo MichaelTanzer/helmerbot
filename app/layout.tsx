@@ -18,10 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <header className="nav">
           <div>
-            <div className="brand">
-              <span className="brand-accent">Helmer</span>Bot
-            </div>
-            {/* Optimized image (Next.js) */}
+            <div className="brand"><span className="brand-accent">Helmer</span>Bot</div>
             <Image
               src="/HelmerShades.jpg"
               alt="HelmerBot logo"
@@ -32,9 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             />
           </div>
           <nav className="controls-inline">
-            <Link className="btn btn-ghost" href="/">
-              Screen
-            </Link>
+            <Link className="btn btn-ghost" href="/">Screen</Link>
           </nav>
         </header>
         <main className="shell">{children}</main>
