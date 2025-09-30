@@ -22,9 +22,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Image
               src="/HelmerShades.jpg"
               alt="HelmerBot logo"
-              width={120}
-              height={120}
-              style={{ marginTop: '6px', borderRadius: '8px', height: '60px', width: 'auto' }}
+              width={240}
+              height={240}
+              style={{ marginTop: '6px', borderRadius: '8px', height: '120px', width: 'auto' }}
               priority
             />
           </div>
