@@ -1,7 +1,7 @@
-// app/results/page.tsx  (Server Component)
+// app/results/page.tsx
 import ResultsClient from './ResultsClient';
 
-// Force this route to be rendered dynamically at request time (no prerender/SSG)
+// Force dynamic (no prerender)
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
