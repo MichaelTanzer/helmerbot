@@ -1,4 +1,4 @@
-// lib/llm.ts — OpenRouter (Responses API Alpha) single-export client
+// lib/llm.ts — OpenRouter Responses API single-export client
 
 export interface LLMOptions {
   model?: string;
@@ -12,7 +12,9 @@ export interface LLMClient {
   generate(prompt: string, options?: LLMOptions): Promise<string>;
 }
 
-function numEnv(name: string, fallback: number): number {
+function numEnv(name: string, fallback: number): number;
+function numEnv(name: string, fallback?: undefined): number | undefined;
+function numEnv(name: string, fallback?: number): number | undefined {
   const v = process.env[name];
   if (v == null) return fallback;
   const n = Number(v);
@@ -31,8 +33,8 @@ class OpenRouterLLM implements LLMClient {
   private defaultModel: string;
   private defaults: {
     maxOutputTokens: number;
-    temperature: number;
-    topP: number;
+    temperature?: number;
+    topP?: number;
     stop?: string[];
   };
   private referer?: string;
@@ -43,12 +45,13 @@ class OpenRouterLLM implements LLMClient {
       throw new Error('OPENROUTER_API_KEY is not set');
     }
     this.apiKey = process.env.OPENROUTER_API_KEY!;
-    this.base = (process.env.OPENROUTER_BASE || 'https://openrouter.ai/api/alpha').replace(/\/$/, '');
-    this.defaultModel = process.env.OPENROUTER_MODEL || 'openai/gpt-5';
+    this.base = (process.env.OPENROUTER_BASE || 'https://openrouter.ai/api/v1').replace(/\/$/, '');
+    this.defaultModel = process.env.OPENROUTER_MODEL || 'openai/gpt-6-astra';
     this.defaults = {
       maxOutputTokens: numEnv('OPENROUTER_MAX_OUTPUT_TOKENS', 8000),
-      temperature: numEnv('OPENROUTER_TEMPERATURE', 0.5),
-      topP: numEnv('OPENROUTER_TOP_P', 1),
+      // Leave sampling unset by default: Astra and Sonnet 5.5 do not advertise it.
+      temperature: numEnv('OPENROUTER_TEMPERATURE'),
+      topP: numEnv('OPENROUTER_TOP_P'),
       stop: arrEnv('OPENROUTER_STOP'),
     };
     this.referer = process.env.OPENROUTER_SITE_URL;
@@ -98,7 +101,11 @@ class OpenRouterLLM implements LLMClient {
 
     const data = await res.json();
 
-    // Responses API Alpha: data.output[].content[].type === 'output_text'
+    if (data.status && data.status !== 'completed') {
+      throw new Error('OpenRouter response not completed. Please try again.');
+    }
+
+    // Responses API: data.output[].content[].type === 'output_text'
     const out: string[] = [];
     const output = Array.isArray(data.output) ? data.output : [];
     for (const item of output) {
@@ -109,7 +116,9 @@ class OpenRouterLLM implements LLMClient {
         }
       }
     }
-    return out.join('').trim();
+    const text = out.join('').trim();
+    if (!text) throw new Error('OpenRouter returned no text. Please try again.');
+    return text;
   }
 }
 
