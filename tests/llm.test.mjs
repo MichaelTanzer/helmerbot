@@ -32,6 +32,26 @@ test('does not log arbitrary options or endpoints even in development', async ()
   assert.deepEqual(logs, []);
 });
 
+test('logs only a validated provider response ID for operator lookup', async () => {
+  const { getLLM, logs } = client({}, { ...completed, id: 'gen-1791543000-abc123ABC', model: 'private-model', usage: { cost: 0.1 }, secret: 'PRIVATE' });
+  assert.equal(await getLLM().generate('PRIVATE PROMPT'), 'Analysis');
+  assert.deepEqual(JSON.parse(JSON.stringify(logs)), [['[analysis-provider]', { generationId: 'gen-1791543000-abc123ABC' }]]);
+});
+
+for (const id of ['recipient@example.com', 'gen-123-secret\nvalue', 'gen-' + 'x'.repeat(200), { private: true }]) {
+  test(`does not log malformed provider identity: ${JSON.stringify(id)}`, async () => {
+    const { getLLM, logs } = client({}, { ...completed, id });
+    assert.equal(await getLLM().generate('PRIVATE PROMPT'), 'Analysis');
+    assert.deepEqual(logs, []);
+  });
+}
+
+test('retains safe provider ID for incomplete billable responses', async () => {
+  const { getLLM, logs } = client({}, { ...completed, id: 'gen-1791543000-abc123ABC', status: 'incomplete' });
+  await assert.rejects(getLLM().generate('prompt'), /not completed/i);
+  assert.equal(logs[0]?.[1]?.generationId, 'gen-1791543000-abc123ABC');
+});
+
 test('uses default timeout and honors a caller abort signal', async () => {
   const { getLLM, calls } = client();
   await getLLM().generate('prompt');

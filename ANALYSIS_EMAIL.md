@@ -58,8 +58,12 @@ platform timeout, instance termination, process restart or email outage can lose
 accepted work; failure notices are best effort. Provider abort does not establish
 that provider-side work stopped or that no charge was incurred. Resend acceptance
 is not inbox delivery. A generation/report-delivery failure triggers a generic
-failure notification where time and email availability allow. Safe logs contain
-an opaque request-binding key and fixed stage/outcome, not recipient/report/errors.
+failure notification where time and email availability allow. Safe failure logs
+contain an opaque request-binding key and fixed stage/outcome. A format-validated
+OpenRouter generation ID is also logged for authorized provider metadata lookup,
+including incomplete responses that may be billed. Neither log includes the
+recipient, prompt, report, credentials or raw error. Missing/malformed IDs are not
+logged; no model, usage, delivery or billing claim follows from acceptance alone.
 
 The old page estimated 4–5 minutes. This implementation stops generation at four
 minutes to fit mail and platform reserves. Real Astra latency has not been measured

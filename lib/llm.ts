@@ -99,6 +99,12 @@ class OpenRouterLLM implements LLMClient {
 
     const data = await res.json();
 
+    // Provider lookup handle only: never log prompts, output, options or errors.
+    // Retain it even for incomplete responses, which may still incur charges.
+    if (typeof data.id === 'string' && /^gen-[0-9]+-[A-Za-z0-9]{1,100}$/.test(data.id) && data.id.length <= 140) {
+      console.log('[analysis-provider]', { generationId: data.id });
+    }
+
     if (data.status && data.status !== 'completed') {
       throw new Error('OpenRouter response not completed. Please try again.');
     }
