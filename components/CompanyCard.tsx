@@ -8,7 +8,7 @@ export function CompanyCard({ c }: { c: {
     <div className="card">
       <div className="toolbar">
         <h3 className="h2" style={{ margin: 0 }}>{c.name}</h3>
-        <Link className="btn btn-link" href={`/company/${c.slug}`}>View analysis →</Link>
+        <Link className="btn btn-link" href={`/company/${c.slug}`}>Email analysis →</Link>
       </div>
       <div className="subtle" style={{ marginTop: 6 }}>
         <div><strong>Industry:</strong> {c.industry}</div>

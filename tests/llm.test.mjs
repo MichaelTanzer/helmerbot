@@ -11,19 +11,56 @@ const source = ts.transpileModule(readFileSync(new URL('../lib/llm.ts', import.m
 const completed = { status: 'completed', output: [{ content: [{ type: 'output_text', text: ' Analysis ' }] }] };
 
 function client(env = {}, response = completed, status = 200) {
-  const calls = [];
+  const calls = [], logs = [];
   const context = {
     exports: {},
+    AbortSignal,
     process: { env: { NODE_ENV: 'production', OPENROUTER_API_KEY: 'offline-test-only', ...env } },
-    console,
+    console: { log: (...args) => logs.push(args) },
     fetch: async (url, init) => {
       calls.push({ url, ...init, body: JSON.parse(init.body) });
       return new Response(JSON.stringify(response), { status });
     },
   };
   vm.runInNewContext(source, context);
-  return { getLLM: context.exports.getLLM, calls };
+  return { getLLM: context.exports.getLLM, calls, logs };
 }
+
+test('does not log arbitrary options or endpoints even in development', async () => {
+  const { getLLM, logs } = client({ NODE_ENV: 'development' });
+  await getLLM().generate('prompt', { stop: ['recipient@example.com'] });
+  assert.deepEqual(logs, []);
+});
+
+test('logs only a validated provider response ID for operator lookup', async () => {
+  const { getLLM, logs } = client({}, { ...completed, id: 'gen-1791543000-abc123ABC', model: 'private-model', usage: { cost: 0.1 }, secret: 'PRIVATE' });
+  assert.equal(await getLLM().generate('PRIVATE PROMPT'), 'Analysis');
+  assert.deepEqual(JSON.parse(JSON.stringify(logs)), [['[analysis-provider]', { generationId: 'gen-1791543000-abc123ABC' }]]);
+});
+
+for (const id of ['recipient@example.com', 'gen-123-secret\nvalue', 'gen-' + 'x'.repeat(200), { private: true }]) {
+  test(`does not log malformed provider identity: ${JSON.stringify(id)}`, async () => {
+    const { getLLM, logs } = client({}, { ...completed, id });
+    assert.equal(await getLLM().generate('PRIVATE PROMPT'), 'Analysis');
+    assert.deepEqual(logs, []);
+  });
+}
+
+test('retains safe provider ID for incomplete billable responses', async () => {
+  const { getLLM, logs } = client({}, { ...completed, id: 'gen-1791543000-abc123ABC', status: 'incomplete' });
+  await assert.rejects(getLLM().generate('prompt'), /not completed/i);
+  assert.equal(logs[0]?.[1]?.generationId, 'gen-1791543000-abc123ABC');
+});
+
+test('uses default timeout and honors a caller abort signal', async () => {
+  const { getLLM, calls } = client();
+  await getLLM().generate('prompt');
+  assert.ok(calls[0].signal instanceof AbortSignal);
+  const controller = new AbortController();
+  await getLLM().generate('prompt', { signal: controller.signal });
+  assert.equal(calls[1].signal, controller.signal);
+  controller.abort(); assert.equal(calls[1].signal.aborted, true);
+});
 
 test('defaults to Astra on the documented stable Responses endpoint', async () => {
   const { getLLM, calls } = client();
