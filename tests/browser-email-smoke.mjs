@@ -44,7 +44,7 @@ try {
   };
   const waitText = async (session, text) => {
     for (let n = 0; n < 100; n++) {
-      if ((await evaluate(session, 'document.body.innerText')).includes(text)) return;
+      if ((await evaluate(session, "document.body?.innerText ?? ''")).includes(text)) return;
       await pause(100);
     }
     throw new Error(`Expected text not found: ${text}`);
