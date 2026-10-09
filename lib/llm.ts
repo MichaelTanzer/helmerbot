@@ -1,6 +1,7 @@
 // lib/llm.ts — OpenRouter Responses API single-export client
 
 export interface LLMOptions {
+  signal?: AbortSignal;
   model?: string;
   maxOutputTokens?: number;
   temperature?: number;
@@ -73,12 +74,9 @@ class OpenRouterLLM implements LLMClient {
     if (this.referer) headers['HTTP-Referer'] = this.referer;
     if (this.title) headers['X-Title'] = this.title;
 
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[OpenRouterLLM] POST', url, { model, max_output_tokens, temperature, top_p, stop });
-    }
-
     const res = await fetch(url, {
       method: 'POST',
+      signal: options?.signal ?? AbortSignal.timeout(240000),
       headers,
       body: JSON.stringify({
         model,

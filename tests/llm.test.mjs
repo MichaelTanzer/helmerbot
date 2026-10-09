@@ -11,19 +11,36 @@ const source = ts.transpileModule(readFileSync(new URL('../lib/llm.ts', import.m
 const completed = { status: 'completed', output: [{ content: [{ type: 'output_text', text: ' Analysis ' }] }] };
 
 function client(env = {}, response = completed, status = 200) {
-  const calls = [];
+  const calls = [], logs = [];
   const context = {
     exports: {},
+    AbortSignal,
     process: { env: { NODE_ENV: 'production', OPENROUTER_API_KEY: 'offline-test-only', ...env } },
-    console,
+    console: { log: (...args) => logs.push(args) },
     fetch: async (url, init) => {
       calls.push({ url, ...init, body: JSON.parse(init.body) });
       return new Response(JSON.stringify(response), { status });
     },
   };
   vm.runInNewContext(source, context);
-  return { getLLM: context.exports.getLLM, calls };
+  return { getLLM: context.exports.getLLM, calls, logs };
 }
+
+test('does not log arbitrary options or endpoints even in development', async () => {
+  const { getLLM, logs } = client({ NODE_ENV: 'development' });
+  await getLLM().generate('prompt', { stop: ['recipient@example.com'] });
+  assert.deepEqual(logs, []);
+});
+
+test('uses default timeout and honors a caller abort signal', async () => {
+  const { getLLM, calls } = client();
+  await getLLM().generate('prompt');
+  assert.ok(calls[0].signal instanceof AbortSignal);
+  const controller = new AbortController();
+  await getLLM().generate('prompt', { signal: controller.signal });
+  assert.equal(calls[1].signal, controller.signal);
+  controller.abort(); assert.equal(calls[1].signal.aborted, true);
+});
 
 test('defaults to Astra on the documented stable Responses endpoint', async () => {
   const { getLLM, calls } = client();
