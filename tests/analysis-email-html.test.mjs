@@ -94,6 +94,44 @@ test('analysis fixture keeps every word in order with styled sections, lists, ta
   assert.match(html, /日本語 — café — 😀/);
 });
 
+test('a bold-only numbered line followed by prose is a black-rule section heading', () => {
+  const text = '1. **Multi-Year Business-Model Diagnosis**\nRevenue grew.';
+  const html = render(text);
+  assertInOrder(html, text); assertInert(html);
+  assert.match(html, /<h2[^>]*border-top:10px solid #000[^>]*>1\. Multi-Year Business-Model Diagnosis<\/h2>/);
+  assert.match(html, /<p[^>]*>Revenue grew\.<\/p>/);
+  assert.doesNotMatch(html, /<td[^>]*>1\.<\/td>/);
+});
+
+test('ordinary numbered items, bold labels with prose and list continuations stay lists', () => {
+  const cases = [
+    ['1. First point.\n2. Second point.', ['1.', '2.']],
+    ['1. **Pricing power:** strong renewal rates.\nFollow-up prose.', ['1.']],
+    ['1. **Alpha**\n2. **Beta**', ['1.', '2.']],
+    ['1. **Revenue Growth**\n   continued detail', ['1.']],
+    ['- intro\n1. **Label**\nmore item text', ['•', '1.']],
+    ['- **Scale**\nprose continuation', ['•']],
+  ];
+  for (const [text, markers] of cases) {
+    const html = render(text);
+    assertInOrder(html, text); assertInert(html);
+    assert.doesNotMatch(html, /<h2|<h3/, text);
+    for (const marker of markers) assert.ok(html.includes(`>${marker}</td>`), `${text} -> ${marker}`);
+  }
+  assert.match(render('1. **Revenue Growth**\n   continued detail'), /<strong>Revenue Growth<\/strong><br>continued detail/);
+  assert.match(render('- **Scale**\nprose continuation'), /<strong>Scale<\/strong><br>prose continuation/);
+});
+
+test('a box-drawing diagram after a list item keeps its preformatted layout', () => {
+  const diagram = ['┌──────────┐     ┌───────────┐', '│ Volume ↑ │ ──► │ Cost ↓    │', '└──────────┘     └───────────┘', '      ▲                │', '      └────────────────┘'];
+  const text = ['- Volume grows', ...diagram].join('\n');
+  const html = render(text);
+  assertInOrder(html, text); assertInert(html);
+  assert.ok(html.includes(`<pre style="`), 'pre block');
+  assert.ok(html.includes(`>${diagram.join('\n')}</pre>`), 'diagram lines intact');
+  assert.match(html, /<td[^>]*>Volume grows<\/td>/);
+});
+
 test('presentation shell is a responsive Georgia column with HelmerBot identity and fixed New York date', () => {
   const html = render('Body');
   for (const s of ['max-width:600px', 'width:100%', 'padding:0 15px', '#dcdcdc', 'Georgia', 'font-size:17px', 'line-height:25px', 'color:#333', 'font-size:28px', 'line-height:36px', 'font-size:24px', 'line-height:31px', 'Arial', 'font-size:13px', 'line-height:18px', 'name="viewport"']) assert.ok(html.includes(s), s);

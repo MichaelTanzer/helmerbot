@@ -71,6 +71,7 @@ function list(items: Item[]) {
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 12px;">${rows}</table>`;
 }
 
+const section = (html: string) => `<h2 style="margin:30px 0 14px;padding:8px 0 0;border-top:10px solid #000;font-family:${SANS};font-size:15px;line-height:20px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#000;${WRAP}">${html}</h2>`;
 const LIST = /^([ \t]*)([-*+•]|\d{1,3}[.)])[ \t]+(.*)$/;
 const SEPARATOR = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
 const DIAGRAM = /[─-▟]/;
@@ -101,7 +102,7 @@ function renderBody(text: string): string {
       flush();
       const level = m[1].length;
       if (level === 1) out.push(`<h2 style="margin:26px 0 12px;font-family:${SERIF};font-size:22px;line-height:29px;font-weight:700;color:#000;${WRAP}">${inline(m[2])}</h2>`);
-      else if (level === 2) out.push(`<h2 style="margin:30px 0 14px;padding:8px 0 0;border-top:10px solid #000;font-family:${SANS};font-size:15px;line-height:20px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#000;${WRAP}">${inline(m[2])}</h2>`);
+      else if (level === 2) out.push(section(inline(m[2])));
       else out.push(`<h3 style="margin:22px 0 8px;font-family:${SERIF};font-size:19px;line-height:26px;font-weight:700;color:#000;${WRAP}">${inline(m[2])}</h3>`);
     } else if (/^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/.test(line) || /^\s*[─━═]{3,}\s*$/.test(line)) {
       flush(); out.push('<div style="margin:22px 0;border-top:1px solid #dcdcdc;height:0;line-height:0;font-size:0;"></div>');
@@ -110,6 +111,9 @@ function renderBody(text: string): string {
       let j = i; while (j < lines.length && /^\s*\|/.test(lines[j])) j++;
       const rows = lines.slice(i, j);
       out.push(rows.length > 1 && SEPARATOR.test(rows[1]) ? table(rows) : pre(rows)); i = j - 1;
+    } else if (!items.length && (m = /^(\d{1,3}[.)])[ \t]+\*\*(?=\S)(.+?)(?<=\S)\*\*(\s*:)?[ \t]*$/.exec(line)) && !m[2].includes('**') && /^[^\s\-*+•\d|>#`~]/.test(lines[i + 1] ?? '') && !LIST.test(lines[i + 1])) {
+      // A bold-only numbered line directly followed by unindented prose is a section title.
+      flush(); out.push(section(`${escape(m[1])} ${inline(m[2])}${escape(m[3] ?? '')}`));
     } else if ((m = LIST.exec(line))) {
       if (para.length || quote.length) flush();
       const indent = m[1].replace(/\t/g, '    ').length;
@@ -117,7 +121,7 @@ function renderBody(text: string): string {
     } else if ((m = /^ {0,3}>[ \t]?(.*)$/.exec(line))) {
       if (para.length || items.length) flush();
       quote.push(m[1]);
-    } else if (items.length) {
+    } else if (items.length && !DIAGRAM.test(line)) {
       items[items.length - 1].lines.push(line);
     } else if (DIAGRAM.test(line) || (!para.length && /^(?: {4}|\t)/.test(line))) {
       flush();
