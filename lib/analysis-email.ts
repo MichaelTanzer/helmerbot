@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { LLMOptions } from '@/lib/llm';
+import { renderAnalysisEmailHtml } from '@/lib/analysis-email-html';
 
 export class AnalysisError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -81,10 +82,12 @@ export async function emailAnalysis(config: ReturnType<typeof analysisConfig>, r
   async function send(text: string, failure: boolean) {
     const remaining = Math.min(10000, deadline - Date.now() - 5000);
     if (remaining <= 0) throw new Error('Delivery deadline elapsed');
+    // Exact plaintext stays authoritative; html is an escaped presentation of the same text.
+    const html = renderAnalysisEmailHtml({ text, companyName: subjectName, failure });
     const response = await fetch(config.endpoint, {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(remaining),
       headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json', 'Idempotency-Key': `${key}-${failure ? 'failure' : 'success'}` },
-      body: JSON.stringify({ from: config.from, to: recipient, subject: `${failure ? 'Analysis could not be completed' : 'Your analysis'}: ${subjectName}`, text }),
+      body: JSON.stringify({ from: config.from, to: recipient, subject: `${failure ? 'Analysis could not be completed' : 'Your analysis'}: ${subjectName}`, text, html }),
     });
     if (!response.ok) throw new Error('Email delivery failed');
   }
