@@ -75,10 +75,32 @@ const section = (html: string) => `<h2 style="margin:30px 0 14px;padding:8px 0 0
 const LIST = /^([ \t]*)([-*+•]|\d{1,3}[.)])[ \t]+(.*)$/;
 const SEPARATOR = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
 const DIAGRAM = /[─-▟]/;
+const RULE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+const CONNECTOR = /^[\s↑↓←→↔↕⇒⇓⇑⇐▲▼◄►▶◀|\/\\^v<>+*-]+$/;
 function renderBody(text: string): string {
   const lines = clean(text).split('\n');
   const out: string[] = [];
-  let para: string[] = [], items: Item[] = [], quote: string[] = [];
+  let para: string[] = [], items: Item[] = [], quote: string[] = [], lastTitle = NaN;
+  // End of a preformatted run starting at i: indented, box-drawing or connector-only lines.
+  const preEnd = (i: number) => {
+    let j = i + 1; while (j < lines.length && lines[j].trim() && (DIAGRAM.test(lines[j]) || /^\s/.test(lines[j]) || CONNECTOR.test(lines[j]))) j++;
+    return j;
+  };
+  // Indented lines after a list item are an ASCII diagram, not continuation prose, only when the
+  // run spans 2+ lines and one of them is purely connector glyphs (e.g. "  v     v", "  |").
+  const asciiDiagram = (i: number) => {
+    const run = lines.slice(i, preEnd(i));
+    return /^\s/.test(lines[i]) && run.length > 1 && run.some(l => CONNECTOR.test(l) && /[↑↓←→↔↕⇒⇓⇑⇐▲▼◄►▶◀|\/\\^v<>]/.test(l));
+  };
+  // A bold-only numbered line is a section title when the next non-blank line cannot continue the
+  // same ordered list: unindented prose or an unindented bullet. Inside an open list it must also
+  // continue the previous title's numbering, so a bold item within an ordinary list stays an item.
+  const titleAt = (i: number, number: string) => {
+    if (items.length && parseInt(number, 10) !== lastTitle + 1) return false;
+    let j = i + 1; while (j < lines.length && !lines[j].trim()) j++;
+    const next = lines[j] ?? '';
+    return !RULE.test(next) && (/^[-*+•][ \t]+\S/.test(next) || (/^[^\s\-*+•\d|>#`~]/.test(next) && !LIST.test(next)));
+  };
   const flush = () => {
     if (para.length) out.push(`<p style="${P}${WRAP}">${para.map(l => inline(l.trim())).join('<br>')}</p>`);
     if (items.length) out.push(list(items));
@@ -104,16 +126,16 @@ function renderBody(text: string): string {
       if (level === 1) out.push(`<h2 style="margin:26px 0 12px;font-family:${SERIF};font-size:22px;line-height:29px;font-weight:700;color:#000;${WRAP}">${inline(m[2])}</h2>`);
       else if (level === 2) out.push(section(inline(m[2])));
       else out.push(`<h3 style="margin:22px 0 8px;font-family:${SERIF};font-size:19px;line-height:26px;font-weight:700;color:#000;${WRAP}">${inline(m[2])}</h3>`);
-    } else if (/^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/.test(line) || /^\s*[─━═]{3,}\s*$/.test(line)) {
+    } else if (RULE.test(line) || /^\s*[─━═]{3,}\s*$/.test(line)) {
       flush(); out.push('<div style="margin:22px 0;border-top:1px solid #dcdcdc;height:0;line-height:0;font-size:0;"></div>');
     } else if (/^\s*\|/.test(line)) {
       flush();
       let j = i; while (j < lines.length && /^\s*\|/.test(lines[j])) j++;
       const rows = lines.slice(i, j);
       out.push(rows.length > 1 && SEPARATOR.test(rows[1]) ? table(rows) : pre(rows)); i = j - 1;
-    } else if (!items.length && (m = /^(\d{1,3}[.)])[ \t]+\*\*(?=\S)(.+?)(?<=\S)\*\*(\s*:)?[ \t]*$/.exec(line)) && !m[2].includes('**') && /^[^\s\-*+•\d|>#`~]/.test(lines[i + 1] ?? '') && !LIST.test(lines[i + 1])) {
-      // A bold-only numbered line directly followed by unindented prose is a section title.
-      flush(); out.push(section(`${escape(m[1])} ${inline(m[2])}${escape(m[3] ?? '')}`));
+    } else if ((m = /^(\d{1,3}[.)])[ \t]+\*\*(?=\S)(.+?)(?<=\S)\*\*(\s*:)?[ \t]*$/.exec(line)) && !m[2].includes('**') && titleAt(i, m[1])) {
+      flush(); lastTitle = parseInt(m[1], 10);
+      out.push(section(`${escape(m[1])} ${inline(m[2])}${escape(m[3] ?? '')}`));
     } else if ((m = LIST.exec(line))) {
       if (para.length || quote.length) flush();
       const indent = m[1].replace(/\t/g, '    ').length;
@@ -121,11 +143,11 @@ function renderBody(text: string): string {
     } else if ((m = /^ {0,3}>[ \t]?(.*)$/.exec(line))) {
       if (para.length || items.length) flush();
       quote.push(m[1]);
-    } else if (items.length && !DIAGRAM.test(line)) {
+    } else if (items.length && !DIAGRAM.test(line) && !asciiDiagram(i)) {
       items[items.length - 1].lines.push(line);
-    } else if (DIAGRAM.test(line) || (!para.length && /^(?: {4}|\t)/.test(line))) {
+    } else if (DIAGRAM.test(line) || items.length || (!para.length && /^(?: {4}|\t)/.test(line))) {
       flush();
-      let j = i + 1; while (j < lines.length && lines[j].trim() && (DIAGRAM.test(lines[j]) || /^\s/.test(lines[j]) || /^[\s↑↓←→↔↕⇒⇓⇑⇐▲▼◄►▶◀|\/\\^v<>+*-]+$/.test(lines[j]))) j++;
+      const j = preEnd(i);
       out.push(pre(lines.slice(i, j))); i = j - 1;
     } else if ((m = /^\s*\*\*(?=\S)(.+?)(?<=\S)\*\*(\s*:)?\s*$/.exec(line)) && !m[1].includes('**')) {
       flush(); out.push(`<h3 style="margin:22px 0 8px;font-family:${SERIF};font-size:19px;line-height:26px;font-weight:700;color:#000;${WRAP}">${inline(m[1])}${escape(m[2] ?? '')}</h3>`);

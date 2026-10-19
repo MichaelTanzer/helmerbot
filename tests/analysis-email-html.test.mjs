@@ -132,6 +132,44 @@ test('a box-drawing diagram after a list item keeps its preformatted layout', ()
   assert.match(html, /<td[^>]*>Volume grows<\/td>/);
 });
 
+// Bounded block grammar regression matrix. Each case is its own test so one failure never hides another.
+// [name, text, black-rule h2 titles (as escaped HTML), HTML fragments that must appear in this order, patterns that must not appear]
+const reEscape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const ascii = ['    A     B', '    v     v', '    C --> D'];
+const asciiPre = '>    A     B\n    v     v\n    C --&gt; D</pre>';
+const blockCases = [
+  ['numbered bold title directly before bullets', '2. **Flywheel Diagram**\n- Volume grows', ['2. Flywheel Diagram'], ['>2. Flywheel Diagram</h2>', '>•</td>', '>Volume grows</td>'], [/>2\.<\/td>/]],
+  ['numbered bold title, blank line, then prose', '1. **Multi-Year Business-Model Diagnosis**\n\nRevenue grew.', ['1. Multi-Year Business-Model Diagnosis'], ['</h2>', '>Revenue grew.</p>'], [/<td/]],
+  ['numbered bold title, blank lines, then bullets', '3. **Risks:**\n\n\n- Competition intensifies', ['3. Risks:'], ['>3. Risks:</h2>', '>Competition intensifies</td>'], [/>3\.<\/td>/]],
+  ['successive titles including after earlier bullets', ['1. **Diagnosis**', '- Revenue grew', '- Margins rose', '2. **Flywheel Diagram**', '- Volume grows', '', '3. **Power Ranking**', '', 'Scale economies lead.', '4. **Outlook**', 'Stable.'].join('\n'),
+    ['1. Diagnosis', '2. Flywheel Diagram', '3. Power Ranking', '4. Outlook'],
+    ['>1. Diagnosis</h2>', '>Revenue grew</td>', '>Margins rose</td>', '>2. Flywheel Diagram</h2>', '>Volume grows</td>', '>3. Power Ranking</h2>', '>Scale economies lead.</p>', '>4. Outlook</h2>', '>Stable.</p>'], [/>[1-4]\.<\/td>/, /Margins rose<br>/]],
+  ['ASCII diagram adjacent to a list item', ['- Loop', ...ascii].join('\n'), [], ['>Loop</td>', asciiPre], [/Loop<br>/]],
+  ['ASCII diagram after title and bullet, then prose', ['2. **Flywheel Diagram**', '- Loop', ...ascii, '', 'Volume compounds.'].join('\n'), ['2. Flywheel Diagram'], ['</h2>', '>Loop</td>', asciiPre, '>Volume compounds.</p>'], [/Loop<br>/]],
+  ['title text and following bullet are escaped', '4. **R&D <b>Moat</b>**\n- Patents & "trade" secrets', ['4. R&amp;D &lt;b&gt;Moat&lt;/b&gt;'], ['</h2>', '>Patents &amp; &quot;trade&quot; secrets</td>'], [/<b>/]],
+  // Controls: these must keep their ordinary list/paragraph semantics.
+  ['control: adjacent all-bold ordered items', '1. **Alpha**\n2. **Beta**\n3. **Gamma**', [], ['>1.</td>', '<strong>Alpha</strong>', '>2.</td>', '<strong>Beta</strong>', '>3.</td>', '<strong>Gamma</strong>'], []],
+  ['control: loose all-bold ordered items', '1. **Alpha**\n\n2. **Beta**', [], ['>1.</td>', '<strong>Alpha</strong>', '>2.</td>', '<strong>Beta</strong>'], []],
+  ['control: bold ordered item with nested bullet', '1. **Alpha**\n   - nested detail', [], ['>1.</td>', '<strong>Alpha</strong>', '>◦</td>', '>nested detail</td>'], []],
+  ['control: bold ordered item inside a bullet list without section numbering', '- intro\n1. **Label**\n- more', [], ['>•</td>', '>intro</td>', '>1.</td>', '<strong>Label</strong>', '>more</td>'], []],
+  ['control: unindented continuation inside a list', '- intro\n1. **Label**\nmore item text', [], ['>intro</td>', '>1.</td>', '<strong>Label</strong><br>more item text'], []],
+  ['control: indented continuation prose', '- **Scale**\n    continued detail', [], ['<strong>Scale</strong><br>continued detail'], [/<pre/]],
+  ['control: indented multi-space continuation prose', '- Revenue\n    grew 12%.  Margins    expanded.\n    Costs  fell.', [], ['>Revenue<br>grew 12%.  Margins    expanded.<br>Costs  fell.</td>'], [/<pre/]],
+  ['control: ordinary multi-space paragraph', 'Revenue grew.  Margins    expanded.\nSecond   line.', [], ['>Revenue grew.  Margins    expanded.<br>Second   line.</p>'], [/<pre/, /<td/]],
+];
+for (const [name, text, headings, ordered, absent] of blockCases) test(`block grammar: ${name}`, () => {
+  const html = render(text);
+  assertInOrder(html, text); assertInert(html);
+  assert.equal((html.match(/<h2/g) ?? []).length, headings.length, 'h2 count');
+  assert.doesNotMatch(html, /<h3/);
+  for (const title of headings) assert.match(html, new RegExp(`<h2[^>]*border-top:10px solid #000[^>]*>${reEscape(title)}</h2>`), title);
+  let at = 0;
+  for (const part of ordered) { const k = html.indexOf(part, at); assert.ok(k >= 0, `missing or out of order: ${part}`); at = k + part.length; }
+  // The shell itself uses layout <td>s, so forbidden patterns are checked against the report body only.
+  const report = html.slice(html.indexOf('data-report'), html.lastIndexOf('\n</td></tr>'));
+  for (const pattern of absent) assert.doesNotMatch(report, pattern);
+});
+
 test('presentation shell is a responsive Georgia column with HelmerBot identity and fixed New York date', () => {
   const html = render('Body');
   for (const s of ['max-width:600px', 'width:100%', 'padding:0 15px', '#dcdcdc', 'Georgia', 'font-size:17px', 'line-height:25px', 'color:#333', 'font-size:28px', 'line-height:36px', 'font-size:24px', 'line-height:31px', 'Arial', 'font-size:13px', 'line-height:18px', 'name="viewport"']) assert.ok(html.includes(s), s);
