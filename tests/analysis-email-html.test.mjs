@@ -156,6 +156,29 @@ const blockCases = [
   ['control: indented continuation prose', '- **Scale**\n    continued detail', [], ['<strong>Scale</strong><br>continued detail'], [/<pre/]],
   ['control: indented multi-space continuation prose', '- Revenue\n    grew 12%.  Margins    expanded.\n    Costs  fell.', [], ['>Revenue<br>grew 12%.  Margins    expanded.<br>Costs  fell.</td>'], [/<pre/]],
   ['control: ordinary multi-space paragraph', 'Revenue grew.  Margins    expanded.\nSecond   line.', [], ['>Revenue grew.  Margins    expanded.<br>Second   line.</p>'], [/<pre/, /<td/]],
+  // Headings: an explicit bold numbered title does not depend on what the next block starts with.
+  ['numbered bold title, blank line, then year-led prose', '1. **Business Diagnosis**\n\n2024 revenue increased 12%.', ['1. Business Diagnosis'], ['</h2>', '>2024 revenue increased 12%.</p>'], [/<td/]],
+  ['numbered bold title then percent-led prose', '2. **Margins**\n45% of revenue is recurring.', ['2. Margins'], ['</h2>', '>45% of revenue is recurring.</p>'], [/<td/]],
+  ['numbered bold title at end of input', 'Intro.\n\n5. **Outlook**', ['5. Outlook'], ['>Intro.</p>', '>5. Outlook</h2>'], [/<td/]],
+  ['numbered bold title directly before an ATX heading', '1. **Overview**\n## Details\nText.', ['1. Overview', 'Details'], ['>1. Overview</h2>', '>Details</h2>', '>Text.</p>'], [/<td/]],
+  ['ATX heading directly before numbered bold title', '## Alpha\n2. **Beta**\nText.', ['Alpha', '2. Beta'], ['>Alpha</h2>', '>2. Beta</h2>', '>Text.</p>'], [/<td/]],
+  ['numbered bold title directly before a table', '2. **Ranking**\n| A | B |\n|---|---|\n| 1 | 2 |', ['2. Ranking'], ['</h2>', '>A</th>', '>2</td>'], [/>2\.<\/td>/]],
+  ['numbered bold title directly before a quote', '3. **Quote**\n> Moats matter.', ['3. Quote'], ['</h2>', '<blockquote', 'Moats matter.</blockquote>'], [/<td/]],
+  ['numbered bold title before a fence that contains title syntax', '4. **Code**\n```\n1. **not a heading**\n<b>x</b>\n```', ['4. Code'], ['>4. Code</h2>', '>1. **not a heading**\n&lt;b&gt;x&lt;/b&gt;</pre>'], [/<td/, /<b>/]],
+  // Ordinary list syntax controls.
+  ['control: loose plain numbered items', '1. First.\n\n2. Second.', [], ['>1.</td>', '>First.</td>', '>2.</td>', '>Second.</td>'], []],
+  ['control: loose bold ordered items with continuation', '1. **Alpha**\n   detail\n\n2. **Beta**', [], ['>1.</td>', '<strong>Alpha</strong><br>detail', '>2.</td>', '<strong>Beta</strong>'], []],
+  ['control: bold ordered item, blank line, nested bullet', '1. **Alpha**\n\n   - nested detail', [], ['>1.</td>', '<strong>Alpha</strong>', '>◦</td>', '>nested detail</td>'], []],
+  // Fallback: indented runs with connector tokens keep their exact rows; otherwise they are continuation.
+  ['ASCII arrow-in-label rows adjacent to a list item', '- Loop\n    A --> B     C\n    D --> E     F', [], ['>Loop</td>', '>    A --&gt; B     C\n    D --&gt; E     F</pre>'], [/Loop<br>/]],
+  ['Unicode arrow rows adjacent to a list item', '- Flow\n    Price ↑ → Volume ↑\n    Cost ↓ ← Scale', [], ['>Flow</td>', '>    Price ↑ → Volume ↑\n    Cost ↓ ← Scale</pre>'], [/Flow<br>/]],
+  ['ASCII rows after a paragraph line', 'Flywheel:\n    A --> B\n    C --> D', [], ['>Flywheel:</p>', '>    A --&gt; B\n    C --&gt; D</pre>'], [/Flywheel:<br>/]],
+  ['ASCII rows with raw HTML stay escaped', '- Map\n    <b>A</b> --> B\n    C --> D', [], ['>Map</td>', '>    &lt;b&gt;A&lt;/b&gt; --&gt; B\n    C --&gt; D</pre>'], [/<b>/]],
+  ['ASCII rows split by a blank line keep both parts', '- Loop\n    A --> B\n    C --> D\n\n    E --> F', [], ['>Loop</td>', '>    A --&gt; B\n    C --&gt; D</pre>', '>    E --&gt; F</pre>'], []],
+  // Precedence: explicit list, fence and heading syntax end a fallback run.
+  ['list child after ASCII rows is not swallowed', '- Loop\n    A --> B\n    C --> D\n  - child', [], ['>Loop</td>', '>    A --&gt; B\n    C --&gt; D</pre>', '>◦</td>', '>child</td>'], [/child<\/pre>/]],
+  ['indented fence after ASCII rows is not swallowed', 'Flow:\n\n    A --> B\n    C --> D\n   ```\n   ## not heading\n   ```', [], ['>    A --&gt; B\n    C --&gt; D</pre>', '<pre', '>   ## not heading</pre>'], [/```/]],
+  ['ATX heading after ASCII rows is not swallowed', 'Flow:\n\n    A --> B\n    C --> D\n  ## Next', ['Next'], ['>    A --&gt; B\n    C --&gt; D</pre>', '>Next</h2>'], []],
 ];
 for (const [name, text, headings, ordered, absent] of blockCases) test(`block grammar: ${name}`, () => {
   const html = render(text);
@@ -168,6 +191,20 @@ for (const [name, text, headings, ordered, absent] of blockCases) test(`block gr
   // The shell itself uses layout <td>s, so forbidden patterns are checked against the report body only.
   const report = html.slice(html.indexOf('data-report'), html.lastIndexOf('\n</td></tr>'));
   for (const pattern of absent) assert.doesNotMatch(report, pattern);
+});
+
+test('ambiguous indented list continuations keep internal and relative whitespace', () => {
+  const cases = [
+    ['- Data\n    Name    Value\n    Alpha   1', 'Data<br>Name    Value<br>Alpha   1'],
+    ['- Data\n    Name\n      child', 'Data<br>Name<br>  child'],
+    ['- Data\n\tName\tValue', 'Data<br>Name\tValue'],
+  ];
+  for (const [text, content] of cases) {
+    const html = render(text);
+    assertInOrder(html, text); assertInert(html);
+    assert.doesNotMatch(html, /<pre/, text);
+    assert.match(html, new RegExp(`<td[^>]*white-space:pre-wrap[^>]*>${reEscape(content)}</td>`), text);
+  }
 });
 
 test('presentation shell is a responsive Georgia column with HelmerBot identity and fixed New York date', () => {

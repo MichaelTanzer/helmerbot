@@ -67,7 +67,12 @@ function table(rows: string[]) {
 }
 type Item = { depth: number; marker: string; lines: string[] };
 function list(items: Item[]) {
-  const rows = items.map(({ depth, marker, lines }) => `<tr><td valign="top" style="${BODY}vertical-align:top;white-space:nowrap;width:1%;padding:0 8px 6px ${depth * 22}px;">${escape(/^\d/.test(marker) ? marker : depth ? '◦' : '•')}</td><td valign="top" style="${BODY}vertical-align:top;padding:0 0 6px;${WRAP}">${lines.map(l => inline(l.trim())).join('<br>')}</td></tr>`).join('');
+  const rows = items.map(({ depth, marker, lines: [first, ...rest] }) => {
+    // Continuations lose only their shared indentation; pre-wrap keeps aligned or nested spacing.
+    const indent = Math.min(...rest.map(l => /^[ \t]*/.exec(l)![0].length));
+    const content = [first.trim(), ...rest.map(l => l.slice(indent).trimEnd())].map(l => inline(l)).join('<br>');
+    return `<tr><td valign="top" style="${BODY}vertical-align:top;white-space:nowrap;width:1%;padding:0 8px 6px ${depth * 22}px;">${escape(/^\d/.test(marker) ? marker : depth ? '◦' : '•')}</td><td valign="top" style="${BODY}vertical-align:top;padding:0 0 6px;white-space:pre-wrap;${WRAP}">${content}</td></tr>`;
+  }).join('');
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 12px;">${rows}</table>`;
 }
 
@@ -77,29 +82,35 @@ const SEPARATOR = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
 const DIAGRAM = /[─-▟]/;
 const RULE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const CONNECTOR = /^[\s↑↓←→↔↕⇒⇓⇑⇐▲▼◄►▶◀|\/\\^v<>+*-]+$/;
+// A whitespace-delimited token made only of connector glyphs with a direction: "-->", "|", "v", "→".
+const CONNECTOR_TOKEN = /(?:^|\s)[+*-]*[↑↓←→↔↕⇒⇓⇑⇐▲▼◄►▶◀|\/\\^v<>][↑↓←→↔↕⇒⇓⇑⇐▲▼◄►▶◀|\/\\^v<>+*-]*(?=\s|$)/;
+const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const ATX = /^ {0,3}(#{1,6})[ \t]+(\S.*?)(?:[ \t]+#+)?[ \t]*$/;
 function renderBody(text: string): string {
   const lines = clean(text).split('\n');
   const out: string[] = [];
-  let para: string[] = [], items: Item[] = [], quote: string[] = [], lastTitle = NaN;
-  // End of a preformatted run starting at i: indented, box-drawing or connector-only lines.
+  let para: string[] = [], items: Item[] = [], quote: string[] = [], lastTitle = NaN, ordered = NaN;
+  // End of a preformatted run starting at i: indented, box-drawing or connector-only lines, stopping
+  // at blank lines and at explicit fence, heading or list syntax.
+  const explicit = (l: string) => FENCE.test(l) || ATX.test(l) || (LIST.test(l) && !CONNECTOR.test(l) && !DIAGRAM.test(l));
   const preEnd = (i: number) => {
-    let j = i + 1; while (j < lines.length && lines[j].trim() && (DIAGRAM.test(lines[j]) || /^\s/.test(lines[j]) || CONNECTOR.test(lines[j]))) j++;
+    let j = i + 1; while (j < lines.length && lines[j].trim() && !explicit(lines[j]) && (DIAGRAM.test(lines[j]) || /^\s/.test(lines[j]) || CONNECTOR.test(lines[j]))) j++;
     return j;
   };
-  // Indented lines after a list item are an ASCII diagram, not continuation prose, only when the
-  // run spans 2+ lines and one of them is purely connector glyphs (e.g. "  v     v", "  |").
+  // An indented run of 2+ lines is an ASCII diagram, not continuation prose, when any row has a
+  // connector token (e.g. "  v     v", "  A --> B"). Other indented text stays continuation prose.
   const asciiDiagram = (i: number) => {
     const run = lines.slice(i, preEnd(i));
-    return /^\s/.test(lines[i]) && run.length > 1 && run.some(l => CONNECTOR.test(l) && /[↑↓←→↔↕⇒⇓⇑⇐▲▼◄►▶◀|\/\\^v<>]/.test(l));
+    return /^\s/.test(lines[i]) && run.length > 1 && run.some(l => CONNECTOR_TOKEN.test(l));
   };
-  // A bold-only numbered line is a section title when the next non-blank line cannot continue the
-  // same ordered list: unindented prose or an unindented bullet. Inside an open list it must also
-  // continue the previous title's numbering, so a bold item within an ordinary list stays an item.
-  const titleAt = (i: number, number: string) => {
-    if (items.length && parseInt(number, 10) !== lastTitle + 1) return false;
+  // A bold-only numbered line is a section title unless list structure positively claims it: it is
+  // in an open list without continuing the section numbering, it continues a loose ordered list, or
+  // the next line is an ordered sibling or an indented child/continuation.
+  const titleAt = (i: number, n: number) => {
+    if ((items.length && n !== lastTitle + 1) || n === ordered + 1) return false;
     let j = i + 1; while (j < lines.length && !lines[j].trim()) j++;
     const next = lines[j] ?? '';
-    return !RULE.test(next) && (/^[-*+•][ \t]+\S/.test(next) || (/^[^\s\-*+•\d|>#`~]/.test(next) && !LIST.test(next)));
+    return !/^\d{1,3}[.)][ \t]/.test(next) && !(/^\s/.test(next) && (j === i + 1 || LIST.test(next)));
   };
   const flush = () => {
     if (para.length) out.push(`<p style="${P}${WRAP}">${para.map(l => inline(l.trim())).join('<br>')}</p>`);
@@ -111,7 +122,9 @@ function renderBody(text: string): string {
     const line = lines[i];
     let m: RegExpExecArray | null;
     if (!line.trim()) { flush(); continue; }
-    if ((m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line))) {
+    // Unindented non-list content ends a loose ordered list.
+    if (!items.length && !LIST.test(line) && !/^\s/.test(line)) ordered = NaN;
+    if ((m = FENCE.exec(line))) {
       flush();
       const info = m[2].trim(), close = new RegExp(`^ {0,3}${m[1][0]}{${m[1].length},}\\s*$`);
       let j = i + 1;
@@ -120,7 +133,7 @@ function renderBody(text: string): string {
         if (info) out.push(`<div style="margin:0 0 4px;font-family:${SANS};font-size:12px;line-height:18px;color:#777;">${escape(info)}</div>`);
         out.push(pre(lines.slice(i + 1, j))); i = j;
       } else { out.push(pre(lines.slice(i))); i = lines.length; }
-    } else if ((m = /^ {0,3}(#{1,6})[ \t]+(\S.*?)(?:[ \t]+#+)?[ \t]*$/.exec(line))) {
+    } else if ((m = ATX.exec(line))) {
       flush();
       const level = m[1].length;
       if (level === 1) out.push(`<h2 style="margin:26px 0 12px;font-family:${SERIF};font-size:22px;line-height:29px;font-weight:700;color:#000;${WRAP}">${inline(m[2])}</h2>`);
@@ -133,22 +146,23 @@ function renderBody(text: string): string {
       let j = i; while (j < lines.length && /^\s*\|/.test(lines[j])) j++;
       const rows = lines.slice(i, j);
       out.push(rows.length > 1 && SEPARATOR.test(rows[1]) ? table(rows) : pre(rows)); i = j - 1;
-    } else if ((m = /^(\d{1,3}[.)])[ \t]+\*\*(?=\S)(.+?)(?<=\S)\*\*(\s*:)?[ \t]*$/.exec(line)) && !m[2].includes('**') && titleAt(i, m[1])) {
-      flush(); lastTitle = parseInt(m[1], 10);
+    } else if ((m = /^(\d{1,3}[.)])[ \t]+\*\*(?=\S)(.+?)(?<=\S)\*\*(\s*:)?[ \t]*$/.exec(line)) && !m[2].includes('**') && titleAt(i, parseInt(m[1], 10))) {
+      flush(); lastTitle = parseInt(m[1], 10); ordered = NaN;
       out.push(section(`${escape(m[1])} ${inline(m[2])}${escape(m[3] ?? '')}`));
     } else if ((m = LIST.exec(line))) {
       if (para.length || quote.length) flush();
-      const indent = m[1].replace(/\t/g, '    ').length;
-      items.push({ depth: Math.min(6, Math.floor(indent / 2)), marker: m[2], lines: [m[3]] });
+      const indent = m[1].replace(/\t/g, '    ').length, depth = Math.min(6, Math.floor(indent / 2));
+      if (!depth) ordered = /^\d/.test(m[2]) ? parseInt(m[2], 10) : NaN;
+      items.push({ depth, marker: m[2], lines: [m[3]] });
     } else if ((m = /^ {0,3}>[ \t]?(.*)$/.exec(line))) {
       if (para.length || items.length) flush();
       quote.push(m[1]);
-    } else if (items.length && !DIAGRAM.test(line) && !asciiDiagram(i)) {
-      items[items.length - 1].lines.push(line);
-    } else if (DIAGRAM.test(line) || items.length || (!para.length && /^(?: {4}|\t)/.test(line))) {
+    } else if (DIAGRAM.test(line) || asciiDiagram(i) || (!items.length && !para.length && /^(?: {4}|\t)/.test(line))) {
       flush();
       const j = preEnd(i);
       out.push(pre(lines.slice(i, j))); i = j - 1;
+    } else if (items.length) {
+      items[items.length - 1].lines.push(line);
     } else if ((m = /^\s*\*\*(?=\S)(.+?)(?<=\S)\*\*(\s*:)?\s*$/.exec(line)) && !m[1].includes('**')) {
       flush(); out.push(`<h3 style="margin:22px 0 8px;font-family:${SERIF};font-size:19px;line-height:26px;font-weight:700;color:#000;${WRAP}">${inline(m[1])}${escape(m[2] ?? '')}</h3>`);
     } else {
